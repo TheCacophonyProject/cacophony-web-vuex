@@ -57,15 +57,15 @@ export interface NewVisitQuery {
   aiModel?: string;
 }
 
-export interface AIVisitsForStats {
+export interface AllVisitsResults {
   totalVisits: number;
   filteredVisits: NewVisit[];
   all: boolean;
 }
 
 /* eslint-disable no-unused-vars */
-export type visitFilter = (visit: NewVisit) => boolean;
-export type progressUpdater = (progress: number) => void;
+export type VisitFilter = (visit: NewVisit) => boolean;
+export type ProgressUpdater = (progress: number) => void;
 /* eslint-enable no-unused-vars */
 
 const apiPath = "/api/v1/monitoring";
@@ -75,17 +75,17 @@ function queryVisitPage(
 ): Promise<FetchResult<NewVisitsQueryResult>> {
   return CacophonyApi.get(
     `${apiPath}/page?${querystring.stringify(makeApiQuery(visitQuery))}${
-      shouldViewAsSuperUser() ? "" : "?view-mode=user"
+      shouldViewAsSuperUser() ? "" : "&view-mode=user"
     }`
   );
 }
 
 async function getAllVisits(
   visitQuery: NewVisitQuery,
-  visitsFilter?: visitFilter, // only visits that pass this filter will be returned
-  progress?: progressUpdater // progress updates caller with how far through the request it is[0, 1]
-): Promise<AIVisitsForStats> {
-  let returnVisits: NewVisit[] = [];
+  visitsFilter?: VisitFilter, // only visits that pass this filter will be returned
+  progress?: ProgressUpdater // progress updates caller with how far through the request it is[0, 1]
+): Promise<AllVisitsResults> {
+  const returnVisits: NewVisit[] = [];
   let allVisitsCount = 0;
   let morePagesExist = true;
   let request = 0;
@@ -97,12 +97,11 @@ async function getAllVisits(
     const response = await queryVisitPage(nextRequestQuery);
     // what if failed???
     allVisitsCount += response.result.visits.length;
+    let visits = response.result.visits;
     if (visitsFilter) {
-      const filteredVisits = response.result.visits.filter(visitsFilter);
-      returnVisits = [...returnVisits, ...filteredVisits];
-    } else {
-      returnVisits = [...returnVisits, ...response.result.visits];
+      visits = response.result.visits.filter(visitsFilter);
     }
+    returnVisits.push(...visits);
 
     morePagesExist = response.result.params.pagesEstimate != 1;
     if (progress) {

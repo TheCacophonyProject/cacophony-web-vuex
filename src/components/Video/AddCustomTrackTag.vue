@@ -20,7 +20,7 @@
   </b-modal>
 </template>
 <script>
-import DefaultLabels from "../../const.js";
+import DefaultLabels from "../../const.ts";
 
 export default {
   name: "AddCustomTrackTag",

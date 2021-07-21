@@ -15,7 +15,7 @@ module.exports = {
   overrides: [
     {
       files: ["./src/**/*.vue", "./src/**/*.ts"],
-    }
+    },
   ],
   rules: {
     "no-prototype-builtins": "off",

@@ -1,6 +1,7 @@
 import { NewVisit } from "@/api/Monitoring.api";
+import { TrackLabel } from "@/const";
 
-export class ClassificationCounter {
+class ClassificationCounter {
   userClassIndex: number;
   aiClassIndex: number;
   recIds: number[];
@@ -34,19 +35,28 @@ export class ClassificationCounter {
 
 export type AiCounters = { [key: string]: ClassificationCounter };
 
+export interface MatrixPoint {
+  x: number;
+  y: number;
+  value: number; // percentage of row
+  count: number; // actual number
+  recIds: number[]; // ids of recordings belonging to this group
+  otherClasses: string[]; // how else items were classified (other only)
+}
+
 export interface AiConfusionMatrix {
   labels: string[];
-  points: number[][];
-  percentages: number[][];
-  counters: AiCounters;
+  percentages: MatrixPoint[];
 }
 
 export function countByClassThenAiClass(
   visits: NewVisit[],
-  allLabels: string[],
+  allLabels: TrackLabel[],
   otherLabel: string
 ): AiConfusionMatrix {
-  const otherIndex = allLabels.findIndex((label) => label === otherLabel);
+  const otherIndex = allLabels.length;
+  const labels = allLabels.map((tagClass) => tagClass.value);
+  labels.push(otherLabel);
 
   const counters = visits.reduce((acc: AiCounters, visit: NewVisit) => {
     const classi = visit.classification || "none";
@@ -65,35 +75,41 @@ export function countByClassThenAiClass(
     return acc;
   }, {});
 
-  const points: number[][] = [];
-  const rowCounts: number[] = new Array(allLabels.length).fill(0);
+  const rowCounts: number[] = new Array(labels.length).fill(0);
 
   for (const counter of Object.values(counters)) {
-    points.push([counter.aiClassIndex, counter.userClassIndex, counter.count]);
-
     rowCounts[counter.userClassIndex] += counter.count;
   }
 
-  const percentages: number[][] = [];
+  const percentages: MatrixPoint[] = [];
   for (const counter of Object.values(counters)) {
-    const percent = counter.count / rowCounts[counter.userClassIndex];
-    percentages.push([counter.aiClassIndex, counter.userClassIndex, percent]);
+    const total = rowCounts[counter.userClassIndex];
+    const percent =
+      total > 0 ? (counter.count * 100) / rowCounts[counter.userClassIndex] : 0;
+    percentages.push({
+      x: counter.aiClassIndex,
+      y: counter.userClassIndex,
+      value: percent,
+      count: counter.count,
+      recIds: counter.recIds,
+      otherClasses: counter.otherClasses,
+    });
   }
 
   return {
-    labels: allLabels,
-    points,
+    labels,
     percentages,
-    counters,
   };
 }
 
 function findLabelIndex(
   value: string,
-  allLabels: string[],
+  allLabels: TrackLabel[],
   defaultValue: number
 ): number {
-  let index = allLabels.findIndex((label) => label === value);
+  let index = allLabels.findIndex((tagClass) =>
+    tagClass.allIncludedTags.includes(value)
+  );
   if (index < 0) {
     index = defaultValue;
   }

@@ -1,6 +1,7 @@
 import crossFetch from "cross-fetch";
 import store from "../stores/index";
 import router from "../router";
+import { CurrentViewAbortController } from "@/main";
 
 const defaults = {
   mode: "cors",
@@ -26,6 +27,7 @@ export async function fetch(url, init, suppressGlobalMessaging = false) {
       ...init.headers,
       Authorization: store.getters["User/getToken"],
     },
+    signal: CurrentViewAbortController.controller.signal,
   };
 
   const response = await crossFetch(url, init);
@@ -38,7 +40,7 @@ export async function fetch(url, init, suppressGlobalMessaging = false) {
       "Messaging/ERROR",
       "Error accessing your account.   Please log in again."
     );
-    router.push("login");
+    await router.push("login");
   } else {
     if (!suppressGlobalMessaging) {
       handleMessages(result, status); //TODO: don't have this on the fetch function; handle errors more explicitly (this should remove the suppressGlobalMessaging hack). Do we global error messages?

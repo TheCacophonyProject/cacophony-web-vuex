@@ -61,7 +61,7 @@
 </template>
 
 <script>
-import { imgSrc } from "@/const.js";
+import { imgSrc } from "@/const.ts";
 
 export default {
   name: "AIClassification",

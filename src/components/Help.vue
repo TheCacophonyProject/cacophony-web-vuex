@@ -1,5 +1,5 @@
 <template>
-  <span v-b-tooltip.hover="helpTip" class="float-right help">
+  <span v-b-tooltip.hover="helpTip" class="help">
     <font-awesome-icon icon="question-circle" size="xs" />
   </span>
 </template>
@@ -17,3 +17,8 @@ export default {
   },
 };
 </script>
+<style lang="scss">
+.help {
+  vertical-align: top;
+}
+</style>

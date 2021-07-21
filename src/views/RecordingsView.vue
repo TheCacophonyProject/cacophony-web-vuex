@@ -41,92 +41,17 @@
             <h5 v-else>Loading...</h5>
             <p class="search-description" v-html="currentQueryDescription" />
           </div>
-          <div v-if="!queryPending" class="results">
-            <div v-if="showCards">
-              <div
-                v-for="(itemsByDay, index_a) in tableItemsChunkedByDayAndHour"
-                :key="index_a"
-              >
-                <h4 class="recordings-day">{{ relativeDay(itemsByDay) }}</h4>
-                <div
-                  v-for="(itemsByHour, index_b) in itemsByDay"
-                  :key="index_b"
-                >
-                  <h5 class="recordings-hour">{{ hour(itemsByHour) }}</h5>
-                  <RecordingSummary
-                    v-for="(item, index) in itemsByHour"
-                    :item="item"
-                    :key="`${index}_${getResultsDisplayStyle}`"
-                    :futureSearchQuery="viewRecordingQuery"
-                    :display-style="getResultsDisplayStyle"
-                  />
-                </div>
-              </div>
-            </div>
-            <div
-              v-else-if="tableItems && tableItems.length !== 0"
-              class="all-rows"
-            >
-              <div class="results-header">
-                <div>
-                  <span>ID</span>
-                  <span>Type</span>
-                  <span>Device</span>
-                  <span>Date</span>
-                  <span>Time</span>
-                  <span>Duration</span>
-                  <span>Tags</span>
-                  <span>Group</span>
-                  <span>Location</span>
-                  <span>Battery</span>
-                </div>
-              </div>
-              <div class="results-rows">
-                <RecordingSummary
-                  v-for="(item, index) in tableItems"
-                  :item="item"
-                  :is-even-row="index % 2 === 1"
-                  :key="`${index}_${getResultsDisplayStyle}`"
-                  :display-style="getResultsDisplayStyle"
-                  :futureSearchQuery="viewRecordingQuery"
-                />
-              </div>
-            </div>
-          </div>
-          <div v-else class="results loading">
-            <div
-              v-for="i in 10"
-              :style="{
-                background: `rgba(240, 240, 240, ${1 / i}`,
-              }"
-              :key="i"
-              class="recording-placeholder"
-            />
-          </div>
+          <RecordingsList
+            :recordings="recordings"
+            :query-pending="queryPending"
+            :show-cards="showCards"
+            :view-recording-query="viewRecordingQuery"
+            :all-loaded="atEndOfSearch"
+            @load-more="requestMoreRecordings"
+          />
           <div v-if="countMessage === 'No matches'" class="no-results">
             <h6 class="text-muted">No recordings found</h6>
             <p class="small text-muted">Try modifying your search criteria.</p>
-          </div>
-        </div>
-
-        <div class="sticky-footer">
-          <div class="pagination-per-page">
-            <b-form-select
-              id="recordsPerPage"
-              v-model="perPage"
-              :options="perPageOptions"
-              class="results-per-page"
-              @change="perPageChanged"
-            />
-            <b-pagination
-              :total-rows="count"
-              v-model="currentPage"
-              :per-page="perPage"
-              :limit="limitPaginationButtons"
-              class="pagination-buttons"
-              @change="pagination"
-              v-if="count > perPage"
-            />
           </div>
         </div>
       </div>
@@ -136,18 +61,15 @@
 <script>
 import QueryRecordings from "../components/QueryRecordings/QueryRecordings.vue";
 import CsvDownload from "../components/QueryRecordings/CsvDownload.vue";
-import RecordingSummary from "../components/RecordingSummary.vue";
+import RecordingsList from "../components/RecordingsList.vue";
 import api from "../api/index";
-import {
-  toStringTodayYesterdayOrDate,
-  toNZDateString,
-  startOfDay,
-  startOfHour,
-} from "@/helpers/datetime";
+
+const LOAD_PER_PAGE_CARDS = 10;
+const LOAD_PER_PAGE_ROWS = 20;
 
 export default {
   name: "RecordingsView",
-  components: { RecordingSummary, QueryRecordings, CsvDownload },
+  components: { QueryRecordings, CsvDownload, RecordingsList },
   props: {},
   data() {
     return {
@@ -157,33 +79,20 @@ export default {
       queryPending: false,
       searchPanelIsCollapsed: true,
       recordings: [],
-      tableItems: [],
       count: null,
       countMessage: null,
       currentPage: 1,
-      perPage: 100,
+      perPage: this.getPreferredResultsDisplayStyle()
+        ? LOAD_PER_PAGE_CARDS
+        : LOAD_PER_PAGE_ROWS,
       showCards: this.getPreferredResultsDisplayStyle(),
-      limitPaginationButtons: 5,
-      perPageOptions: [
-        { value: 10, text: "10 per page" },
-        { value: 50, text: "50 per page" },
-        { value: 100, text: "100 per page" },
-        { value: 300, text: "300 per page" },
-        { value: 500, text: "500 per page" },
-        { value: 1000, text: "1000 per page" },
-      ],
     };
   },
   watch: {
     $route() {
-      if (this.$route.query.limit) {
-        this.perPage = Number(this.$route.query.limit);
-      } else {
-        this.perPage = 100;
-      }
       if (this.$route.query.offset) {
         this.currentPage =
-          Math.ceil(this.$route.query.offset / this.perPage) + 1;
+          Math.ceil(Number(this.$route.query.offset) / this.perPage) + 1;
       } else {
         this.currentPage = 1;
       }
@@ -194,31 +103,11 @@ export default {
       this.perPage = Number(this.$route.query.limit);
     }
     if (this.$route.query.offset) {
-      this.currentPage = Math.ceil(this.$route.query.offset / this.perPage) + 1;
+      this.currentPage =
+        Math.ceil(Number(this.$route.query.offset) / this.perPage) + 1;
     }
   },
   computed: {
-    tableItemsChunkedByDayAndHour() {
-      const chunks = [];
-      let current = chunks;
-      for (const item of this.tableItems) {
-        if (item.kind === "dataSeparator") {
-          if (item.hasOwnProperty("date")) {
-            chunks.push([]);
-            current = chunks[chunks.length - 1];
-          }
-          if (item.hasOwnProperty("hour")) {
-            current.push([]);
-          }
-        } else {
-          current[current.length - 1].push(item);
-        }
-      }
-      return chunks;
-    },
-    getResultsDisplayStyle() {
-      return this.showCards ? "card" : "row";
-    },
     viewRecordingQuery() {
       const queryCopy = JSON.parse(JSON.stringify(this.serialisedQuery));
 
@@ -234,26 +123,47 @@ export default {
 
       return queryCopy;
     },
+    totalPages() {
+      return (
+        Math.ceil(
+          this.count /
+            (this.showCards ? LOAD_PER_PAGE_CARDS : LOAD_PER_PAGE_ROWS)
+        ) + 1
+      );
+    },
+    atEndOfSearch() {
+      return !(this.currentPage < this.totalPages);
+    },
   },
   methods: {
+    async requestMoreRecordings() {
+      const nextQuery = this.makePaginatedQuery(
+        this.serialisedQuery,
+        this.currentPage + 1,
+        this.showCards ? LOAD_PER_PAGE_CARDS : LOAD_PER_PAGE_ROWS
+      );
+
+      // Make sure the request wouldn't go past the count?
+      if (this.currentPage < this.totalPages) {
+        this.updateRoute(nextQuery);
+        this.queryPending = true;
+        const { result } = await api.recording.query(nextQuery);
+
+        // TODO: It's possible that more recordings have come in since we loaded the page,
+        //  in which case our offsets are wrong. So check for duplicate recordings here.
+        this.recordings.push(...result.rows);
+        this.queryPending = false;
+      } else {
+        // At end of search
+        // console.log("At end of search");
+      }
+    },
     pagination(page) {
       this.paginationHasChanged(page, this.perPage);
     },
     perPageChanged(perPage) {
       this.currentPage = 0;
       this.paginationHasChanged(this.currentPage, perPage);
-    },
-    relativeDay(itemDate) {
-      itemDate = itemDate[0][0].dateObj;
-      return toStringTodayYesterdayOrDate(itemDate);
-    },
-    hour(itemDate) {
-      itemDate = itemDate.length && itemDate[0].dateObj;
-      const hours = itemDate && itemDate.getHours();
-      if (hours === 0) {
-        return "12am";
-      }
-      return `${hours <= 12 ? hours : hours - 12}${hours < 12 ? "am" : "pm"}`;
     },
     getPreferredResultsDisplayStyle() {
       return localStorage.getItem("results-display-style") !== "row";
@@ -266,7 +176,7 @@ export default {
       );
     },
     makePaginatedQuery(origQuery, page, perPage) {
-      const query = Object.assign({}, origQuery);
+      const query = { ...origQuery };
       query.limit = perPage;
       query.offset = Math.max(0, (page - 1) * perPage);
       return query;
@@ -301,15 +211,17 @@ export default {
       const queryParamsHaveChanged =
         JSON.stringify(query) !== JSON.stringify(this.serialisedQuery);
       if (queryParamsHaveChanged) {
-        this.currentPage = 0;
+        this.currentPage = 1;
       }
 
       this.serialisedQuery = query;
+
       const fullQuery = this.makePaginatedQuery(
         query,
         this.currentPage,
         this.perPage
       );
+      fullQuery.offset = 0;
       this.updateRoute(fullQuery);
       this.getRecordings(fullQuery);
     },
@@ -317,205 +229,32 @@ export default {
       this.nextQueryDescription = description;
     },
     async getRecordings(whereQuery) {
-      // Remove previous values
-      this.countMessage = "";
-      this.recordings = [];
-      this.tableItems = [];
-      // Call API and process results
-      this.queryPending = true;
-      const { result, success } = await api.recording.query(whereQuery);
-      this.queryPending = false;
+      try {
+        // Remove previous values
+        this.countMessage = "";
+        this.recordings = [];
+        // Call API and process results
+        this.queryPending = true;
+        const { result, success } = await api.recording.query(whereQuery);
+        this.queryPending = false;
 
-      // Remove previous values *again* since it's possible for the query to have been called twice
-      // since it's async, and then you'd append values twice.
-      this.recordings = [];
-      this.tableItems = [];
-
-      if (!success) {
-        result.messages &&
-          result.messages.forEach((message) => {
-            this.$store.dispatch("Messaging/WARN", message);
-          });
-      } else {
-        this.currentQueryDescription = this.nextQueryDescription;
-        this.recordings = result.rows;
-        this.count = result.count;
-        if (result.count > 0) {
-          this.countMessage = `${result.count} matches found (total)`;
-        } else if (result.count === 0) {
-          this.countMessage = "No matches";
-        }
-        // New day, new hour.
-        let prevDate = null;
-        for (const row of result.rows) {
-          const thisDate = new Date(row.recordingDateTime);
-          if (
-            prevDate === null ||
-            startOfDay(thisDate, true).getTime() !==
-              startOfDay(prevDate, true).getTime()
-          ) {
-            const item = {
-              kind: "dataSeparator",
-              hour: thisDate,
-            };
-            item.date = thisDate;
-            this.tableItems.push(item);
-            prevDate = thisDate;
-          } else if (
-            startOfHour(thisDate, true).getTime() !==
-            startOfHour(prevDate, true).getTime()
-          ) {
-            const item = {
-              kind: "dataSeparator",
-              hour: thisDate,
-            };
-            this.tableItems.push(item);
-            prevDate = thisDate;
+        if (!success) {
+          result.messages &&
+            result.messages.forEach((message) => {
+              this.$store.dispatch("Messaging/WARN", message);
+            });
+        } else {
+          this.currentQueryDescription = this.nextQueryDescription;
+          this.count = result.count;
+          if (result.count > 0) {
+            this.countMessage = `${result.count} matches found (total)`;
+          } else if (result.count === 0) {
+            this.countMessage = "No matches";
           }
-          const itemData = {
-            kind: "dataRow",
-            id: row.id,
-            type: row.type,
-            devicename: row.Device.devicename,
-            groupname: row.Group.groupname,
-            location: this.parseLocation(row.location),
-            dateObj: thisDate,
-            date: toNZDateString(thisDate),
-            time: thisDate.toLocaleTimeString(),
-            duration: row.duration,
-            tags: this.collateTags(row.Tags, row.Tracks),
-            other: this.parseOther(row),
-            trackCount: row.Tracks.length,
-            processing_state: this.parseProcessingState(row.processingState),
-          };
-          if (row.Station) {
-            itemData.stationname = row.Station.name;
-          }
-          this.tableItems.push(itemData);
+          this.recordings = result.rows;
         }
-      }
-    },
-    parseLocation(location) {
-      if (location && typeof location === "object") {
-        const latitude = location.coordinates[0];
-        const longitude = location.coordinates[1];
-        return latitude.toFixed(5) + ", " + longitude.toFixed(5);
-      } else {
-        return "(unknown)";
-      }
-    },
-    parseOther(row) {
-      const out = {};
-      if (row.batteryLevel !== null) {
-        out.batteryLevel = row.batteryLevel;
-      }
-      return out;
-    },
-    parseProcessingState(result) {
-      const string = result.toLowerCase();
-      return string.charAt(0).toUpperCase() + string.slice(1);
-    },
-    collateTags(tags, tracks) {
-      // Build a collection of tagItems - one per animal
-      const tagItems = {};
-      for (let i = 0; i < tags.length; i++) {
-        const tag = tags[i];
-        const tagName = tag.animal === null ? tag.event : tag.animal;
-        const taggerId = tag.taggerId;
-        this.addToListOfTags(tagItems, tagName, tag.automatic, taggerId);
-      }
-
-      if (tracks) {
-        for (let j = 0; j < tracks.length; j++) {
-          const track = tracks[j];
-          // For track tags, pick the best one, which is the "master AI" tag.
-          const aiTag = track.TrackTags.find(
-            (tag) =>
-              tag.data && (tag.data === "Master" || tag.data.name === "Master")
-          );
-          const humanTags = track.TrackTags.filter((tag) => !tag.automatic);
-          // If the same track has one or more human tags, and none of them agree with the AI just show that:
-          let humansDisagree = false;
-          if (aiTag && humanTags.length !== 0) {
-            humansDisagree =
-              humanTags.find((tag) => tag.what === aiTag.what) === undefined;
-          }
-
-          if (aiTag && !humansDisagree) {
-            const taggerId = aiTag.UserId || aiTag.taggerId;
-            this.addToListOfTags(
-              tagItems,
-              aiTag.what,
-              aiTag.automatic,
-              taggerId
-            );
-          }
-
-          // Also add human tags:
-          for (const tag of humanTags) {
-            const taggerId = tag.UserId || tag.taggerId;
-            this.addToListOfTags(tagItems, tag.what, tag.automatic, taggerId);
-          }
-        }
-      }
-
-      // Use automatic and human status to create an ordered array of objects
-      // suitable for parsing into coloured spans
-      const result = [];
-      for (let animal of Object.keys(tagItems).sort()) {
-        const tagItem = tagItems[animal];
-        let subOrder = 0;
-        if (animal === "false positive") {
-          animal = "false positive";
-          subOrder = 3;
-        } else if (animal === "multiple animals") {
-          animal = "multiple";
-          subOrder = 2;
-        } else if (animal === "unidentified") {
-          animal = "?";
-          subOrder = 1;
-        }
-
-        if (tagItem.automatic && tagItem.human) {
-          result.push({
-            text: animal,
-            class: "automatic human",
-            taggerIds: tagItem.taggerIds,
-            order: subOrder,
-          });
-        } else if (tagItem.human) {
-          result.push({
-            text: animal,
-            class: "human",
-            taggerIds: tagItem.taggerIds,
-            order: 10 + subOrder,
-          });
-        } else if (tagItem.automatic) {
-          result.push({
-            text: animal,
-            class: "automatic",
-            order: 20 + subOrder,
-          });
-        }
-      }
-      // Sort the result array
-      result.sort((a, b) => {
-        return a.order - b.order;
-      });
-      return result;
-    },
-    addToListOfTags: function (allTags, tagName, isAutomatic, taggerId) {
-      const tag = allTags[tagName] || {};
-      tag.taggerIds = tag.taggerIds || [];
-      if (taggerId && !tag.taggerIds.includes(taggerId)) {
-        tag.taggerIds.push(taggerId);
-      }
-      if (isAutomatic) {
-        tag.automatic = true;
-      } else {
-        tag.human = true;
-      }
-      allTags[tagName] = tag;
+        // eslint-disable-next-line no-empty
+      } catch (e) {}
     },
   },
 };
@@ -540,48 +279,6 @@ $main-content-width: 640px;
     color: $gray-700;
   }
 
-  .recordings-day {
-    position: sticky;
-    top: 0;
-    background: transparentize($white, 0.15);
-    padding: 0.5rem 0;
-    font-size: 1em;
-    font-weight: 600;
-    border-bottom: 1px solid $gray-200;
-  }
-
-  .recordings-hour {
-    font-size: 0.9em;
-    font-weight: 600;
-  }
-
-  @include media-breakpoint-down(md) {
-    .recordings-hour {
-      position: sticky;
-      top: 0;
-      right: 0;
-      text-align: right;
-      margin-top: -1rem;
-      margin-bottom: 0;
-      padding: 0.7rem 0;
-    }
-    .recordings-day + div .recordings-hour {
-      margin-top: -2.8rem;
-      margin-bottom: 11px;
-    }
-  }
-
-  @include media-breakpoint-up(md) {
-    .recordings-hour {
-      display: inline-block;
-      position: sticky;
-      float: left;
-      top: 40px;
-      margin-left: -60px;
-      margin-top: 15px;
-    }
-  }
-
   .search-results {
     max-width: $main-content-width;
     margin: 0 auto;
@@ -592,48 +289,9 @@ $main-content-width: 640px;
     .search-results {
       margin: 0;
       width: 100%;
-      max-width: calc(100vw - 2em);
-    }
-
-    .results {
-      overflow: auto;
-    }
-
-    .results-rows {
-      display: table-row-group;
-    }
-    .all-rows {
-      display: table;
-      width: 100%;
-      border-top: 1px solid $border-color;
-      border-left: 1px solid $border-color;
-    }
-
-    .results-header {
-      margin-bottom: 0;
-      display: table-header-group;
-      > div {
-        display: table-row;
-
-        > span {
-          position: sticky;
-          top: 0;
-          background: transparentize($white, 0.15);
-          padding: 5px;
-          font-weight: 700;
-          vertical-align: middle;
-          display: table-cell;
-          border-right: 1px solid $border-color;
-          border-bottom: 2px solid $border-color;
-        }
-      }
+      max-width: 100vw;
     }
   }
-}
-
-.recording-placeholder {
-  height: 110px;
-  margin-bottom: 15px;
 }
 
 .no-results {
@@ -642,28 +300,6 @@ $main-content-width: 640px;
   margin-top: 20vh;
   text-align: center;
 }
-
-.sticky-footer {
-  background: $white;
-  border-top: 1px solid $gray-200;
-  padding: 7px;
-  .pagination-per-page {
-    max-width: $main-content-width;
-    margin: 0 auto;
-    display: flex;
-    flex-flow: row wrap;
-    justify-content: space-between;
-    .results-per-page {
-      width: auto;
-      float: right;
-    }
-  }
-  .pagination {
-    margin-bottom: 0;
-    justify-content: center;
-  }
-}
-
 .search-filter-wrapper {
   background: $gray-100;
   position: relative;
@@ -696,10 +332,6 @@ $main-content-width: 640px;
     overflow-y: scroll;
     margin: 0;
     max-height: calc(100vh - var(--navbar-height));
-  }
-  .sticky-footer {
-    position: sticky;
-    bottom: 0;
   }
 }
 .display-toggle {

@@ -1,6 +1,7 @@
 import CacophonyApi from "./CacophonyApi";
 import * as querystring from "querystring";
 import { shouldViewAsSuperUser } from "@/utils";
+import recording, { DeviceId } from "./Recording.api";
 
 export default {
   getDevices,
@@ -9,6 +10,7 @@ export default {
   removeUserFromDevice,
   getLatestSoftwareVersion,
   getLatestEvents,
+  getType,
 };
 
 export interface DeviceInfo {
@@ -50,14 +52,14 @@ function addUserToDevice(username, deviceId, admin) {
   );
 }
 
-function removeUserFromDevice(username, deviceId) {
+function removeUserFromDevice(username: string, deviceId: number) {
   return CacophonyApi.delete("/api/v1/devices/users", {
-    username: username,
-    deviceId: deviceId,
+    username,
+    deviceId,
   });
 }
 
-function getLatestSoftwareVersion(deviceId) {
+function getLatestSoftwareVersion(deviceId: number) {
   const params: EventApiParams = {
     limit: 1,
     type: "versionData",
@@ -65,17 +67,63 @@ function getLatestSoftwareVersion(deviceId) {
   return getLatestEvents(deviceId, params);
 }
 
+export const DeviceEventTypes = [
+  "alert",
+  "attiny-sleep",
+  "audioBait",
+  "daytime-power-off",
+  "powered-off",
+  "power-on-test",
+  "rpi-power-on",
+  "salt-update",
+  "systemError",
+  "test",
+  "throttle",
+  "versionData",
+] as const;
+
+type IsoFormattedString = string;
+
+export type DeviceEventType = typeof DeviceEventTypes[number];
+
 export interface EventApiParams {
   limit?: number;
   offset?: number;
-  type?: string;
-  endTime?: string;
+  type?: DeviceEventType | DeviceEventType[];
+  endTime?: IsoFormattedString; // Or in the format YYYY-MM-DD hh:mm:ss
+  startTime?: IsoFormattedString;
 }
 
-function getLatestEvents(deviceId, params?: EventApiParams) {
+export interface DeviceEvent {
+  id: number;
+  dateTime: IsoFormattedString;
+  createdAt: IsoFormattedString;
+  DeviceId: DeviceId;
+  Device: { devicename: string };
+  EventDetail: {
+    type: DeviceEventType;
+    details?: any;
+  };
+}
+
+function getLatestEvents(
+  deviceId: number,
+  params?: EventApiParams
+): Promise<{ result: { rows: DeviceEvent[] } }> {
   return CacophonyApi.get(
     `/api/v1/events?latest=true&deviceId=${deviceId}&${querystring.stringify(
       params as any
     )}`
   );
+}
+
+async function getType(
+  deviceId: number
+): Promise<"AudioRecorder" | "VideoRecorder" | "UnknownDeviceType"> {
+  const rec = await recording.latestForDevice(deviceId);
+  if (rec.result.rows.length) {
+    const type = rec.result.rows[0].type;
+    return type === "thermalRaw" ? "VideoRecorder" : "AudioRecorder";
+  }
+  return "UnknownDeviceType";
 }

@@ -139,9 +139,12 @@ export default {
     },
   },
   created: async function () {
-    await this.$store.dispatch("Devices/GET_DEVICES");
-    await this.$store.dispatch("Groups/GET_GROUPS");
-    await this.getData();
+    try {
+      await this.$store.dispatch("Devices/GET_DEVICES");
+      await this.$store.dispatch("Groups/GET_GROUPS");
+      await this.getData();
+      // eslint-disable-next-line no-empty
+    } catch (e) {}
     window.addEventListener("resize", () => {
       this.width = window.innerWidth;
     });
@@ -152,82 +155,85 @@ export default {
       this.fetching = true;
       this.introMessage = null;
 
-      const limit = 1000;
-      const searchParams: RecordingQuery = {
-        type: this.recordingType,
-        days: this.dateRange,
-        limit: limit,
-      };
+      try {
+        const limit = 1000;
+        const searchParams: RecordingQuery = {
+          type: this.recordingType,
+          days: this.dateRange,
+          limit: limit,
+        };
 
-      if (this.showGroups !== "all") {
-        searchParams.group = [this.showGroups];
-      }
-
-      // Get all data (first 1000 rows)
-      let { result: allData } = await api.query(searchParams);
-      // Check whether all data was fetched
-      // if not, run again with increased limit to get all rows
-      if (allData.count > limit) {
-        searchParams.limit = allData.count;
-        ({ result: allData } = await api.query(searchParams));
-      }
-      // Count the number of recordings for each device
-      this.devices.map((device) => (this.deviceCount[device.id] = 0));
-      for (const row of allData.rows) {
-        this.deviceCount[row.DeviceId] += 1;
-      }
-      // Create data and label variables
-      const labels = [];
-      const data = [];
-      this.unused = [];
-      for (const device of this.devices) {
-        if (this.deviceCount[device.id] > 0) {
-          data.push({
-            id: device.id,
-            count: this.deviceCount[device.id],
-            devicename: device.name,
-          });
-          labels.push(device.name);
-        } else {
-          this.unused.push(device.name);
+        if (this.showGroups !== "all") {
+          searchParams.group = [this.showGroups];
         }
-      }
 
-      // Create colors for bar graphs
-      const colorPicker = () => {
-        let hue;
-        if (this.lastHue < 360) {
-          hue = this.lastHue + 60;
-          this.lastHue = hue;
-        } else {
-          hue = this.lastHue - 339;
-          this.lastHue = hue;
+        // Get all data (first 1000 rows)
+        let { result: allData } = await api.query(searchParams);
+        // Check whether all data was fetched
+        // if not, run again with increased limit to get all rows
+        if (allData.count > limit) {
+          searchParams.limit = allData.count;
+          ({ result: allData } = await api.query(searchParams));
         }
-        const hsl = `hsl(${hue}, 80%, 80%)`;
-        return hsl;
-      };
-      this.lastHue = -60; // reset starting hue
-      const colors = data.map(() => colorPicker());
-      // Create dataset suitable for ChartJS
-      this.data = {
-        labels: labels,
-        datasets: [
-          {
-            data: data.map((item) => item.count),
-            backgroundColor: colors,
-            borderColor: colors,
-            borderWidth: 1,
-          },
-        ],
-      };
-      const title = "Device Activity";
-      if (this.dateRange === 0) {
-        this.title = `${title} (All time)`;
-      } else if (this.dateRange === 1) {
-        this.title = `${title} (Last 24 Hours)`;
-      } else {
-        this.title = `${title} (Last ${this.dateRange} days)`;
-      }
+        // Count the number of recordings for each device
+        this.devices.map((device) => (this.deviceCount[device.id] = 0));
+        for (const row of allData.rows) {
+          this.deviceCount[row.DeviceId] += 1;
+        }
+        // Create data and label variables
+        const labels = [];
+        const data = [];
+        this.unused = [];
+        for (const device of this.devices) {
+          if (this.deviceCount[device.id] > 0) {
+            data.push({
+              id: device.id,
+              count: this.deviceCount[device.id],
+              devicename: device.name,
+            });
+            labels.push(device.name);
+          } else {
+            this.unused.push(device.name);
+          }
+        }
+
+        // Create colors for bar graphs
+        const colorPicker = () => {
+          let hue;
+          if (this.lastHue < 360) {
+            hue = this.lastHue + 60;
+            this.lastHue = hue;
+          } else {
+            hue = this.lastHue - 339;
+            this.lastHue = hue;
+          }
+          const hsl = `hsl(${hue}, 80%, 80%)`;
+          return hsl;
+        };
+        this.lastHue = -60; // reset starting hue
+        const colors = data.map(() => colorPicker());
+        // Create dataset suitable for ChartJS
+        this.data = {
+          labels: labels,
+          datasets: [
+            {
+              data: data.map((item) => item.count),
+              backgroundColor: colors,
+              borderColor: colors,
+              borderWidth: 1,
+            },
+          ],
+        };
+        const title = "Device Activity";
+        if (this.dateRange === 0) {
+          this.title = `${title} (All time)`;
+        } else if (this.dateRange === 1) {
+          this.title = `${title} (Last 24 Hours)`;
+        } else {
+          this.title = `${title} (Last ${this.dateRange} days)`;
+        }
+        // eslint-disable-next-line no-empty
+      } catch (e) {}
       this.fetching = false;
     },
     padLeft(str, char, len) {

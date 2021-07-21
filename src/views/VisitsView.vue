@@ -269,7 +269,7 @@
 <script lang="ts">
 import * as moment from "moment";
 import { Visit, DayVisits } from "../api/visits";
-import DefaultLabels, { imgSrc } from "../const.js";
+import DefaultLabels, { imgSrc } from "../const";
 import EventSummary from "../components/EventSummary.vue";
 import AudioSummary from "../components/AudioBaitSummary.vue";
 import QueryRecordings from "../components/QueryRecordings/QueryRecordings.vue";
@@ -368,9 +368,9 @@ export default {
     whatToolTip(what: string): string {
       if (what == "null") {
         return this.nothingHelp;
-      } else if (what == DefaultLabels.allLabels.unidentified.value) {
+      } else if (what == DefaultLabels.unidentifiedLabel.value) {
         return this.unidentifiedHelp;
-      } else if (what == DefaultLabels.allLabels.unknown.value) {
+      } else if (what == DefaultLabels.unknownLabel.value) {
         return this.unknownHelp;
       }
       return `Track has been tagged as ${what}`;
@@ -378,7 +378,7 @@ export default {
     summaryWhat(what: string): string {
       if (what == "null") {
         return "Probably not an Animal";
-      } else if (what == DefaultLabels.allLabels.unidentified.value) {
+      } else if (what == DefaultLabels.unidentifiedLabel.value) {
         return "( Unidentified ) Animal";
       }
       return this.capitalizeFirst(what);
@@ -524,20 +524,18 @@ export default {
       const filtered = result.visits.filter(
         (visit: Visit): boolean =>
           visit.events.length > 0 &&
-          visit.what != DefaultLabels.allLabels.bird.value &&
-          visit.what != DefaultLabels.allLabels.falsePositive.value
+          visit.what != DefaultLabels.birdLabel.value &&
+          visit.what != DefaultLabels.falsePositiveLabel.value
       );
 
       this.visits.push(...filtered);
       for (const devId of Object.keys(summary)) {
         const newSummary = summary[devId];
-        if (newSummary.hasOwnProperty(DefaultLabels.allLabels.bird.value)) {
-          delete newSummary[DefaultLabels.allLabels.bird.value];
+        if (newSummary.hasOwnProperty(DefaultLabels.birdLabel.value)) {
+          delete newSummary[DefaultLabels.birdLabel.value];
         }
-        if (
-          newSummary.hasOwnProperty(DefaultLabels.allLabels.falsePositive.value)
-        ) {
-          delete newSummary[DefaultLabels.allLabels.falsePositive.value];
+        if (newSummary.hasOwnProperty(DefaultLabels.falsePositiveLabel.value)) {
+          delete newSummary[DefaultLabels.falsePositiveLabel.value];
         }
         // filter out bird and false positive
         if (!(devId in this.deviceSummary)) {

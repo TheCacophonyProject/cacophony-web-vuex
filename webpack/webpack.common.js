@@ -6,6 +6,8 @@ const ESLintPlugin = require("eslint-webpack-plugin");
 const ForkTsCheckerWebpackPlugin = require("fork-ts-checker-webpack-plugin");
 const webpack = require("webpack");
 
+const DEV_MODE = process.argv.includes("webpack/webpack.dev.js");
+
 module.exports = {
   target: "web", // NOTE: Hot module reloading via vue-loader breaks without this, even though it is supposed to be the default.
   experiments: {
@@ -19,7 +21,7 @@ module.exports = {
       },
       {
         test: /\.vue$/,
-        loader: "vue-loader"
+        loader: "vue-loader",
       },
       {
         test: /\.tsx?$/,
@@ -39,6 +41,9 @@ module.exports = {
           /\.js$/,
           require.resolve("bootstrap-vue"),
         ],
+        options: {
+          compact: !DEV_MODE,
+        },
       },
       {
         test: /\.(png|jpg|gif|svg)$/,
@@ -58,11 +63,17 @@ module.exports = {
   plugins: [
     new VueLoaderPlugin(),
     new CleanWebpackPlugin(),
-    new CopyWebpackPlugin(["src/assets/favicon", "src/assets/video", "src/assets/map"]),
+    new CopyWebpackPlugin({
+      patterns: [
+        { from: path.resolve(__dirname, "../src/assets/favicon") },
+        { from: path.resolve(__dirname, "../src/assets/video") },
+        { from: path.resolve(__dirname, "../src/assets/map") },
+      ],
+    }),
     new ESLintPlugin(),
     new ForkTsCheckerWebpackPlugin(),
     new webpack.DefinePlugin({
-      "process.env.BUILD": JSON.stringify("web")
+      "process.env.BUILD": JSON.stringify("web"),
     }),
   ],
   resolve: {
@@ -76,7 +87,7 @@ module.exports = {
     },
     alias: {
       vue$: "vue/dist/vue.esm.js",
-      "@": path.resolve(__dirname, '../src')
+      "@": path.resolve(__dirname, "../src"),
     },
     extensions: ["*", ".js", ".vue", ".json", ".ts", ".wasm", ".mjs"],
   },

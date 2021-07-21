@@ -1,15 +1,16 @@
 <template>
   <b-form-group>
-    <label>Device</label>
+    <label>Device, group, and station</label>
     <multiselect
       :value="selectedValues"
       :options="options"
       :multiple="true"
       :placeholder="placeholder"
-      :disabled="fetching"
+      :loading="fetching"
       track-by="uid"
       label="name"
       @input="updateSelected"
+      @open="maybeInitialiseValues"
       data-cy="device-select"
     >
       <template slot="tag" slot-scope="{ option, remove }">
@@ -24,9 +25,17 @@
             icon="microchip"
             size="xs"
           />
+          <font-awesome-icon
+            v-else-if="option.type === 'station'"
+            icon="map-marker-alt"
+            size="xs"
+          />
           <span class="tag">{{ option.name }}</span>
           <span v-if="option.type === 'group'" class="tag">
-            ({{ option.devices.length }} devices)
+            ({{ option.devices.length }} device<span
+              v-if="option.devices.length > 1"
+              >s</span
+            >)
           </span>
 
           <i
@@ -44,6 +53,11 @@
           <font-awesome-icon
             v-else-if="type === 'device'"
             icon="microchip"
+            size="xs"
+          />
+          <font-awesome-icon
+            v-else-if="type === 'station'"
+            icon="map-marker-alt"
             size="xs"
           />
           <span class="option">{{ name }}</span>
@@ -67,12 +81,17 @@ export default {
       type: Array,
       required: true,
     },
+    selectedStations: {
+      type: Array,
+      default: () => [],
+    },
   },
   data() {
     return {
       fetching: false,
-      devices: [],
-      groups: [],
+      devices: {},
+      groups: {},
+      stations: {},
     };
   },
   computed: {
@@ -80,10 +99,11 @@ export default {
       if (this.fetching) {
         return "loading";
       } else if (
-        this.selectedDevices.length === 0 &&
-        this.selectedGroups.length === 0
+        this.selectedDevices.length === 0 ||
+        this.selectedGroups.length === 0 ||
+        this.selectedStations.length === 0
       ) {
-        return "all devices";
+        return "all";
       } else {
         return "add more devices";
       }
@@ -95,12 +115,16 @@ export default {
       const selectedGs = this.selectedGroups
         .map((groupId) => this.groups[groupId])
         .filter((item) => item !== undefined);
-      return [...selectedDs, ...selectedGs];
+      const selectedSs = this.selectedStations
+        .map((stationId) => this.stations[stationId])
+        .filter((item) => item !== undefined);
+      return [...selectedDs, ...selectedGs, ...selectedSs];
     },
     options() {
       return [
         ...Object.values(this.devices),
         ...Object.values(this.groups),
+        ...Object.values(this.stations),
       ].sort((a, b) => a.name.localeCompare(b.name));
     },
   },
@@ -113,43 +137,94 @@ export default {
         groups: selectedObjects
           .filter(({ type }) => type === "group")
           .map(({ id }) => id),
+        stations: selectedObjects
+          .filter(({ type }) => type === "station")
+          .map(({ id }) => id),
       };
       // this causes the v-model in the parent component to get updated
       this.$emit("update-device-selection", updatedSelection);
     },
+    async maybeInitialiseValues() {
+      if (!this.options.length) {
+        await this.loadValues();
+      }
+    },
+    async loadValues() {
+      this.fetching = true;
+      try {
+        const [
+          {
+            result: {
+              devices: { rows: devices },
+            },
+          },
+          {
+            result: { groups },
+          },
+        ] = await Promise.all([
+          api.device.getDevices(),
+          api.groups.getGroups(),
+        ]);
+        this.devices = Object.freeze(
+          devices
+            .map(({ id, devicename }) => ({
+              id: Number(id),
+              type: "device",
+              name: devicename,
+              uid: `device_${id}`,
+            }))
+            .reduce((acc, curr) => ((acc[curr.id] = curr), acc), {})
+        );
+        this.groups = Object.freeze(
+          groups
+            .map(({ id, groupname, Devices }) => ({
+              id: Number(id),
+              type: "group",
+              name: groupname,
+              devices: Devices,
+              uid: `group_${id}`,
+            }))
+            // NOTE: Filter out empty groups
+            .filter(({ devices }) => devices.length !== 0)
+            .reduce((acc, curr) => ((acc[curr.id] = curr), acc), {})
+        );
+
+        // TODO(jon): Add stations for each group: in practice this shouldn't be too many for most people.
+        const stationPromises = [];
+        // TODO(jon): This should probably become a general api.stations.getStations() type thing.
+        for (const group of Object.values(this.groups)) {
+          stationPromises.push(api.groups.getStationsForGroup(group.id));
+        }
+        const stations = await Promise.all(stationPromises);
+        this.stations = Object.freeze(
+          stations.reduce((acc, curr) => {
+            for (const { name, id } of curr.result.stations.filter(
+              (station) => station.retiredAt === null
+            )) {
+              acc[id] = {
+                type: "station",
+                name,
+                id,
+                uid: `station_${id}`,
+              };
+            }
+            return acc;
+          }, {})
+        );
+      } catch (e) {
+        // ...
+      }
+      this.fetching = false;
+    },
   },
   async created() {
-    this.fetching = true;
-    const [
-      {
-        result: {
-          devices: { rows: devices },
-        },
-      },
-      {
-        result: { groups },
-      },
-    ] = await Promise.all([api.device.getDevices(), api.groups.getGroups()]);
-    this.devices = devices
-      .map(({ id, devicename }) => ({
-        id: Number(id),
-        type: "device",
-        name: devicename,
-        uid: `device_${id}`,
-      }))
-      .reduce((acc, curr) => ((acc[curr.id] = curr), acc), {});
-    this.groups = groups
-      .map(({ id, groupname, Devices }) => ({
-        id: Number(id),
-        type: "group",
-        name: groupname,
-        devices: Devices,
-        uid: `group_${id}`,
-      }))
-      // NOTE: Filter out empty groups
-      .filter(({ devices }) => devices.length !== 0)
-      .reduce((acc, curr) => ((acc[curr.id] = curr), acc), {});
-    this.fetching = false;
+    if (
+      this.selectedStations.length ||
+      this.selectedDevices.length ||
+      this.selectedGroups.length
+    ) {
+      await this.loadValues();
+    }
   },
 };
 </script>

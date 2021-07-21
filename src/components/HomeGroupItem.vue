@@ -43,9 +43,11 @@ export default {
       days: 1,
       group: [this.group.id],
     };
-
-    const { result: allData } = await recordingsApi.queryCount(params);
-    this.count = allData.count;
+    try {
+      const { result: allData } = await recordingsApi.queryCount(params);
+      this.count = allData.count;
+      // eslint-disable-next-line no-empty
+    } catch (e) {}
   },
 };
 </script>

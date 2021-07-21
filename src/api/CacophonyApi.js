@@ -28,7 +28,8 @@ export default {
    * @param {string} endpoint - The cacophony API endpoint to target, for example `/api/v1/users`.
    * @returns {Promise<{result: *, success: boolean, status: number}>}
    */
-  get: async (endpoint) => fetch(`${config.api}${endpoint}`, { method: "GET" }),
+  get: async (endpoint) =>
+    fetch(`${config.api}${endpoint}`, { method: "GET" }, true),
 
   /**
    * Returns a promise that when resolved, returns an object with a result, success boolean, and status code.

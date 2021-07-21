@@ -78,7 +78,7 @@
 </template>
 
 <script>
-import { imgSrc } from "../../const.js";
+import { imgSrc } from "../../const";
 
 export default {
   name: "TrackTags",

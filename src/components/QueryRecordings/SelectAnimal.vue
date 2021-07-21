@@ -15,7 +15,7 @@
   </b-form-group>
 </template>
 <script>
-import DefaultLabels from "../../const.js";
+import DefaultLabels from "../../const.ts";
 
 export default {
   name: "AnimalSelect",

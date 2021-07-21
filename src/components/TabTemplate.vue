@@ -2,7 +2,13 @@
   <div>
     <span>{{ title }}</span>
     <b-spinner v-if="isLoading" type="border" small />
-    <b-badge v-else-if="value" pill variant="secondary">{{ value }}</b-badge>
+    <b-badge
+      v-else-if="value"
+      pill
+      :variant="hasWarnings ? 'danger' : 'secondary'"
+    >
+      {{ value }}
+    </b-badge>
   </div>
 </template>
 
@@ -19,8 +25,12 @@ export default {
       default: false,
     },
     value: {
-      type: Number,
+      type: [Number, String],
       default: 0,
+    },
+    hasWarnings: {
+      type: Boolean,
+      default: false,
     },
   },
 };

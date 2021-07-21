@@ -36,17 +36,10 @@
         </b-navbar-nav>
 
         <b-navbar-nav class="ml-auto">
-          <b-nav-item-dropdown>
-            <template slot="button-content">
-              <font-awesome-icon icon="wrench" class="icon" />&nbsp;Admin
-            </template>
-            <b-dropdown-item href="/groups"
-              ><font-awesome-icon
-                icon="users"
-                class="icon"
-              />&nbsp;Groups</b-dropdown-item
-            >
-          </b-nav-item-dropdown>
+          <b-nav-item to="/groups">
+            <font-awesome-icon icon="users" class="icon" />
+            Groups
+          </b-nav-item>
           <b-nav-item-dropdown class="profile" right>
             <template slot="button-content">
               <font-awesome-icon
@@ -121,10 +114,31 @@
   </div>
 </template>
 
-<script>
+<script lang="ts">
 import User from "../api/User.api";
 import { shouldViewAsSuperUser } from "@/utils";
 import config from "@/config";
+
+export const superUserCreds = (): any | boolean => {
+  let superUserCreds = localStorage.getItem("superUserCreds");
+  if (superUserCreds) {
+    try {
+      superUserCreds = JSON.parse(superUserCreds);
+      return superUserCreds;
+    } catch (e) {
+      return false;
+    }
+  }
+  return false;
+};
+export const isViewingAsOtherUser = () => {
+  const creds = superUserCreds();
+  return !!(
+    creds &&
+    creds.token &&
+    creds.token !== localStorage.getItem("JWT")
+  );
+};
 
 export default {
   name: "Navbar",
@@ -220,7 +234,8 @@ export default {
       }
     },
     superUserName() {
-      return this.superUserCreds() && this.superUserCreds().username;
+      const creds = superUserCreds();
+      return creds && creds.username;
     },
     logout() {
       this.$store.dispatch("User/LOGOUT");
@@ -235,7 +250,7 @@ export default {
       }
     },
     revertViewingUser() {
-      const superUser = this.superUserCreds();
+      const superUser = superUserCreds();
       if (superUser) {
         this.$store.dispatch("User/LOGIN_OTHER", {
           userData: { ...superUser },
@@ -260,24 +275,10 @@ export default {
       window.location.reload();
     },
     superUserCreds() {
-      let superUserCreds = localStorage.getItem("superUserCreds");
-      if (superUserCreds) {
-        try {
-          superUserCreds = JSON.parse(superUserCreds);
-          return superUserCreds;
-        } catch (e) {
-          return false;
-        }
-      }
-      return false;
+      return superUserCreds();
     },
     isViewingAsOtherUser() {
-      const superUserCreds = this.superUserCreds();
-      return !!(
-        superUserCreds &&
-        superUserCreds.token &&
-        superUserCreds.token !== localStorage.getItem("JWT")
-      );
+      return isViewingAsOtherUser();
     },
   },
 };

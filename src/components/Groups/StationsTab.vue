@@ -20,45 +20,20 @@
           v-if="updateWarnings !== null"
           v-html="updateWarningsText"
         />
-        <l-map
-          ref="stationsMap"
-          class="stations-map"
-          style="height: 400px"
-          :bounds="mapBounds.pad(0.25)"
-        >
-          <l-control-layers />
-          <l-w-m-s-tile-layer
-            v-for="layer in mapLayers"
-            :key="layer.name"
-            :base-url="layer.url"
-            :layers="layer.layers"
-            :visible="layer.visible"
-            :name="layer.name"
-            :attribution="layer.attribution"
-            layer-type="base"
-          />
-          <l-circle
-            v-for="station in stationsForMap"
-            :lat-lng="station.location"
-            :radius="60"
-            :key="`r_${station.name}`"
-            :fill-opacity="0.25"
-            :weight="1"
-            :stroke="false"
-            :interative="false"
-          />
-          <l-circle-marker
-            v-for="station in stationsForMap"
-            :lat-lng="station.location"
-            :key="station.name"
-            :radius="5"
-            color="black"
-            :weight="0.5"
-            :fill-opacity="1"
-          >
-            <l-tooltip>{{ station.name }}</l-tooltip>
-          </l-circle-marker>
-        </l-map>
+        <MapWithPoints
+          :points="stationsForMap"
+          :radius="60"
+          :navigate-to-point="
+            (point) => ({
+              name: 'station',
+              params: {
+                groupName,
+                stationName: point.name,
+                tabName: 'recordings',
+              },
+            })
+          "
+        />
         <b-table :items="stations" striped hover>
           <template #cell(name)="data">
             <b-link
@@ -81,13 +56,14 @@
             <span v-html="Number(data.value).toFixed(5)" />
           </template>
         </b-table>
-
-        <b-btn
-          v-if="!enableEditingStations && isGroupAdmin"
-          @click="enableEditingStations = true"
-        >
-          Edit stations
-        </b-btn>
+        <div class="bottom-buttons">
+          <b-btn
+            v-if="!enableEditingStations && isGroupAdmin"
+            @click="enableEditingStations = true"
+          >
+            Edit stations
+          </b-btn>
+        </div>
       </div>
       <p v-else-if="!groupHasStations">
         You currently have no stations associated with this group.
@@ -132,10 +108,10 @@
         <p>The following changes will be made</p>
         <b-table class="station-diff-table" :items="pendingStationsDiff">
           <template #cell(latitude)="data">
-            <span v-html="Number(data.value).toFixed(5)" />
+            <span v-html="data.value" />
           </template>
           <template #cell(longitude)="data">
-            <span v-html="Number(data.value).toFixed(5)" />
+            <span v-html="data.value" />
           </template>
         </b-table>
         <b-checkbox class="back-date" v-model="backDateRecordings">
@@ -158,19 +134,13 @@
 </template>
 
 <script lang="ts">
-import { icon, latLng, latLngBounds } from "leaflet";
+import { icon, latLng } from "leaflet";
 import api from "@/api";
-import { linzBasemapApiKey } from "@/config";
 import * as csv from "csvtojson";
 import Help from "@/components/Help.vue";
-import {
-  LMap,
-  LTooltip,
-  LWMSTileLayer,
-  LControlLayers,
-  LCircle,
-  LCircleMarker,
-} from "vue2-leaflet";
+import MapWithPoints from "@/components/MapWithPoints.vue";
+
+// TODO(jon): Do we want to be able to view retired stations?
 
 const Marker = icon({
   iconUrl: "/marker-icon.png",
@@ -190,12 +160,7 @@ interface StationData {
 
 export default {
   components: {
-    LMap,
-    LControlLayers,
-    LTooltip,
-    LCircle,
-    LCircleMarker,
-    LWMSTileLayer,
+    MapWithPoints,
     Help,
   },
   name: "StationsTab",
@@ -223,28 +188,6 @@ export default {
     };
   },
   computed: {
-    mapLayers() {
-      const OpenStreetMapFallbackLayer = {
-        name: "OpenStreetMap Basemap",
-        visible: false,
-        url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        attribution:
-          '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors',
-      };
-      if (linzBasemapApiKey && linzBasemapApiKey !== "YOUR_API_KEY_HERE") {
-        return [
-          {
-            name: "LINZ Basemap",
-            visible: true, // Make the LINZ basemap the default one
-            attribution:
-              '<a href="//www.linz.govt.nz/data/linz-data/linz-basemaps/data-attribution">LINZ CC BY 4.0 © Imagery Basemap contributors</a>',
-            url: `https://basemaps.linz.govt.nz/v1/tiles/aerial/3857/{z}/{x}/{y}.webp?api=${linzBasemapApiKey}`,
-          },
-          OpenStreetMapFallbackLayer,
-        ];
-      }
-      return [{ ...OpenStreetMapFallbackLayer, visible: true }];
-    },
     stations() {
       return this.items
         .filter(({ retiredAt }) => retiredAt === null)
@@ -274,10 +217,6 @@ export default {
         this.updateWarnings.replace(/\n/g, "<br>")
       );
     },
-    mapBounds() {
-      // Calculate the initial map bounds and zoom level from the set of lat/lng points
-      return latLngBounds(this.stationsForMap.map(({ location }) => location));
-    },
     pendingStationsDiff() {
       // Show pending stations, and mark any existing stations that don't have a match in pending as
       // "will be retired".  Any existing stations with lat/lng changes get marked as "will be updated".
@@ -306,10 +245,14 @@ export default {
           ) {
             let { latitude, longitude } = updatedStation;
             if (Math.abs(latitude - station.latitude) > EPSILON) {
-              latitude = `<del>${station.latitude}</del> -> ${latitude}`;
+              latitude = `<del>${Number(station.latitude).toFixed(
+                5
+              )}</del> -> ${Number(latitude).toFixed(5)}`;
             }
             if (Math.abs(longitude - station.longitude) > EPSILON) {
-              longitude = `<del>${station.longitude}</del> -> ${longitude}`;
+              longitude = `<del>${Number(station.longitude).toFixed(
+                5
+              )}</del> -> ${Number(longitude).toFixed(5)}`;
             }
             diff[station.name] = {
               ...updatedStation,
@@ -455,6 +398,10 @@ export default {
 </script>
 
 <style lang="scss">
+@import "~bootstrap/scss/functions";
+@import "~bootstrap/scss/variables";
+@import "~bootstrap/scss/mixins";
+
 .upload-region {
   width: 100%;
   min-height: 200px;
@@ -508,5 +455,22 @@ export default {
 }
 .back-date {
   margin-bottom: 20px;
+}
+
+@include media-breakpoint-up(md) {
+  .bottom-buttons {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+  }
+}
+@include media-breakpoint-down(md) {
+  .bottom-buttons {
+    display: flex;
+    flex-direction: column;
+    > * {
+      margin-bottom: 10px;
+    }
+  }
 }
 </style>

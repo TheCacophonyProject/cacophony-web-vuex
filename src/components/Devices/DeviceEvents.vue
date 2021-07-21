@@ -1,4 +1,5 @@
-~<template>
+~
+<template>
   <b-container class="latest-events">
     <h2>
       Latest events for this device
@@ -19,15 +20,16 @@
         <multiselect
           :value="eventTypes"
           :options="allEventTypes"
+          :multiple="true"
           placeholder="All events"
           data-cy="event=type-select"
           @input="eventTypeChanged"
         />
       </b-col>
       <b-col cols="0" class="col-md-1"></b-col>
-      <b-col cols="3" class="col-md-2"> Start from: </b-col>
+      <b-col cols="3" class="col-md-2"> Until date: </b-col>
       <b-col cols="8" class="col-sm-8 col-md-4">
-        <input v-model="date" type="date" />
+        <input v-model="date" type="date" @change="fetchEvents" />
       </b-col>
     </b-row>
 
@@ -69,6 +71,7 @@
 <script>
 import api from "@/api/index";
 import { toNZDateString } from "@/helpers/datetime";
+import { DeviceEventTypes } from "@/api/Device.api";
 
 const ALL_EVENTS = "All events";
 
@@ -91,21 +94,7 @@ export default {
       filtered: false,
       date: "",
       datePrint: "",
-      allEventTypes: [
-        ALL_EVENTS,
-        "alert",
-        "attiny-sleep",
-        "audioBait",
-        "daytime-power-off",
-        "powered-off",
-        "power-on-test",
-        "rpi-power-on",
-        "salt-update",
-        "systemError",
-        "test",
-        "throttle",
-        "versionData",
-      ],
+      allEventTypes: DeviceEventTypes,
     };
   },
 
@@ -117,15 +106,15 @@ export default {
       const params = this.makeEventRequestParams();
 
       this.eventsLoading = true;
-
-      const { result } = await api.device.getLatestEvents(
-        this.device.id,
-        params
-      );
-      this.events = result.rows;
-      this.count = result.count;
-      this.page = result.offset + 1;
-
+      try {
+        const { result } = await api.device.getLatestEvents(
+          this.device.id,
+          params
+        );
+        this.events = result.rows;
+        this.count = result.count;
+        // eslint-disable-next-line no-empty
+      } catch (e) {}
       this.eventsLoading = false;
     },
     makeEventRequestParams() {
@@ -134,7 +123,7 @@ export default {
         offset: this.page > 1 ? (this.page - 1) * this.perPage : 0,
       };
       if (this.filtered) {
-        if (this.eventTypes) {
+        if (this.eventTypes && this.eventTypes.length) {
           params.type = this.eventTypes;
         }
 
@@ -146,7 +135,7 @@ export default {
       return params;
     },
     eventTypeChanged(newEventType) {
-      this.eventTypes = newEventType === ALL_EVENTS ? "" : newEventType;
+      this.eventTypes = newEventType === ALL_EVENTS ? [] : newEventType;
       this.fetchEvents();
     },
     getTableDate(dateString) {
@@ -177,11 +166,6 @@ export default {
       ];
     },
   },
-  watch: {
-    date: function () {
-      this.fetchEvents();
-    },
-  },
 };
 </script>
 <style scoped lang="scss">
@@ -202,8 +186,8 @@ export default {
 .event-filters {
   background: $gray-100;
   border: 1px solid $gray-200;
-  padding: 1em 0em;
-  margin: 1em 2em 1em 0em;
+  padding: 1em 0;
+  margin: 1em 2em 1em 0;
 }
 
 @include media-breakpoint-down(sm) {
@@ -212,4 +196,3 @@ export default {
   }
 }
 </style>
-

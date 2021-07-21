@@ -100,6 +100,9 @@ import Help from "@/components/Help.vue";
 import api from "@/api";
 import { mapState } from "vuex";
 
+// TODO(jon): Add device users - users who can't see the group, but who can see a particular device in the group.
+//  Then we need a way for those users to see their device.
+
 export default {
   name: "UsersTab",
   props: {

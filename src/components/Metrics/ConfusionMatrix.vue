@@ -1,9 +1,8 @@
 <template>
-  <div :id="id" width="70%" class="confusion" />
+  <div :id="id" width="90%" class="confusion" />
 </template>
 
 <script>
-import { ClassificationCounter } from "@/helpers/aiStats";
 import Highcharts from "highcharts";
 // Load module after Highcharts is loaded
 // eslint-disable-next-line no-undef
@@ -20,6 +19,10 @@ export default {
       type: String,
       default: "confusion-matrix",
     },
+    title: {
+      type: String,
+      default: "",
+    },
   },
   data() {
     return {
@@ -32,22 +35,18 @@ export default {
         this.chart.destroy();
         this.chart = null;
       }
-      if (this.matrix && this.matrix.percentages) {
+      if (
+        this.matrix &&
+        this.matrix.percentages &&
+        this.matrix.percentages.length > 0
+      ) {
         this.makeAllCategoriesHeatmap();
       }
     },
   },
   computed: {},
   methods: {
-    getCounter(point) {
-      const key = ClassificationCounter.makeKey(point.y, point.x);
-      return this.matrix.counters[key];
-    },
     makeAllCategoriesHeatmap() {
-      const otherClasses = (point) =>
-        JSON.stringify(this.getCounter(point).otherClasses);
-      const recordingIds = (point) => this.getCounter(point).recIds;
-      const actualNumber = (point) => this.getCounter(point).count;
       this.chart = Highcharts.chart(this.id, {
         chart: {
           type: "heatmap",
@@ -56,7 +55,7 @@ export default {
         },
 
         title: {
-          text: "Confusion matrix",
+          text: this.title,
         },
 
         xAxis: {
@@ -87,14 +86,12 @@ export default {
 
         tooltip: {
           formatter: function () {
-            const value = actualNumber(this.point);
             const userClass = this.point.series.yAxis.categories[this.point.y];
             const aiClass = this.point.series.xAxis.categories[this.point.x];
             if (aiClass !== "other") {
-              return `There were ${value} visits identified by users as ${userClass} and by the ai as ${aiClass}`;
+              return `There were ${this.point.count} visits identified by users as ${userClass} and by the ai as ${aiClass}`;
             } else {
-              const classes = otherClasses(this.point);
-              return `There were ${value} visits identified by users as ${userClass} and by the ai as ${classes}`;
+              return `There were ${this.point.count} visits identified by users as ${userClass} and by the ai as one of ${this.point.otherClasses}`;
             }
           },
         },
@@ -104,7 +101,7 @@ export default {
             cursor: "pointer",
             events: {
               click: function (event) {
-                const ids = recordingIds(event.point);
+                const ids = event.point.recIds;
                 let url = "";
                 if (ids.length > 0) {
                   url = `recording/${ids[0]}?id=${ids.join("&id=")}`;
@@ -122,8 +119,10 @@ export default {
             data: this.matrix.percentages || {},
             dataLabels: {
               enabled: true,
+              align: "center",
               color: "#000000",
-              format: "{point.value:.2f}",
+              format:
+                "{point.value:.0f}%</br><span style='color: gray'>({point.count})</span>",
             },
           },
         ],
@@ -132,11 +131,3 @@ export default {
   },
 };
 </script>
-
-<style scoped>
-.confusion:after {
-  content: "";
-  display: block;
-  padding-bottom: 100%;
-}
-</style>

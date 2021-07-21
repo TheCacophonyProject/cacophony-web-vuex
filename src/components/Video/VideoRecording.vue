@@ -40,11 +40,9 @@
             @change-tag="changedTrackTag"
           />
         </div>
-        <div
-          v-if="recording && recording['processingState'] !== 'FINISHED'"
-          class="processing"
-        >
-          Recording still processing...
+        <div v-if="!processingCompleted" class="processing">
+          <b-spinner small />
+          <span>Recording still processing.</span>
         </div>
       </b-col>
     </b-row>
@@ -61,6 +59,7 @@
           :comment="recording.comment"
           :download-raw-url="videoRawUrl"
           :download-file-url="''"
+          :processing-completed="processingCompleted"
           @deleteTag="deleteTag($event)"
           @addTag="addTag($event)"
           @updateComment="updateComment($event)"
@@ -131,7 +130,7 @@ export default {
       tagItems() {
         return this.$store.getters["Video/getTagItems"];
       },
-      rawSize: (state) => state.Video.rawSize,
+      rawSize: (state) => (state as any).Video.rawSize,
     }),
     timespanAdjustment() {
       if (this.header) {
@@ -140,6 +139,9 @@ export default {
         }
       }
       return 0;
+    },
+    processingCompleted() {
+      return this.recording && this.recording["processingState"] === "FINISHED";
     },
   },
   async mounted() {
@@ -174,34 +176,37 @@ export default {
     async gotoNextRecording(direction, tagMode, tags, skipMessage = false) {
       const idsList = this.getListOfRecordingsIds();
       if (idsList) {
-        this.goToNextRecordingInList(direction, idsList);
+        await this.goToNextRecordingInList(direction, idsList);
       } else {
         const searchQueryCopy = JSON.parse(JSON.stringify(this.$route.query));
-        if (
-          await this.getNextRecording(direction, tagMode, tags, skipMessage)
-        ) {
-          await this.$router.push({
-            path: `/recording/${this.recording.id}`,
-            query: searchQueryCopy,
-          });
-          if (direction === "next") {
-            this.canGoBackwardInSearch = true;
-            this.canGoForwardInSearch = await this.hasNextRecording(
-              "next",
-              tagMode,
-              tags,
-              true
-            );
-          } else if (direction === "previous") {
-            this.canGoForwardInSearch = true;
-            this.canGoBackwardInSearch = await this.hasNextRecording(
-              "previous",
-              tagMode,
-              tags,
-              true
-            );
+        try {
+          if (
+            await this.getNextRecording(direction, tagMode, tags, skipMessage)
+          ) {
+            await this.$router.push({
+              path: `/recording/${this.recording.id}`,
+              query: searchQueryCopy,
+            });
+            if (direction === "next") {
+              this.canGoBackwardInSearch = true;
+              this.canGoForwardInSearch = await this.hasNextRecording(
+                "next",
+                tagMode,
+                tags,
+                true
+              );
+            } else if (direction === "previous") {
+              this.canGoForwardInSearch = true;
+              this.canGoBackwardInSearch = await this.hasNextRecording(
+                "previous",
+                tagMode,
+                tags,
+                true
+              );
+            }
           }
-        }
+          // eslint-disable-next-line no-empty
+        } catch (e) {}
       }
     },
     async goToNextRecordingInList(direction, list: string[]) {
@@ -209,16 +214,19 @@ export default {
       if (listIndex >= 0) {
         const nextIndex = direction === "next" ? listIndex + 1 : listIndex - 1;
         if (nextIndex >= 0 && nextIndex < list.length) {
-          await this.$router.push({
-            path: `/recording/${list[nextIndex]}`,
-            query: { id: list },
-          });
-          this.canGoBackwardInSearch = nextIndex > 0;
-          this.canGoForwardInSearch = nextIndex < list.length - 1;
-          return await this.$store.dispatch(
-            "Video/GET_RECORDING",
-            list[nextIndex]
-          );
+          try {
+            await this.$router.push({
+              path: `/recording/${list[nextIndex]}`,
+              query: { id: list },
+            });
+            this.canGoBackwardInSearch = nextIndex > 0;
+            this.canGoForwardInSearch = nextIndex < list.length - 1;
+            return await this.$store.dispatch(
+              "Video/GET_RECORDING",
+              list[nextIndex]
+            );
+            // eslint-disable-next-line no-empty
+          } catch (e) {}
         }
       }
     },
@@ -273,15 +281,19 @@ export default {
       params.type = "video";
       delete params.offset;
 
-      if (!noNavigate) {
-        return await this.$store.dispatch("Video/QUERY_RECORDING", {
-          params,
-          skipMessage,
-        });
-      } else {
-        // Just return whether or not there is a next/prev recording.
-        const { result, success } = await api.recording.query(params);
-        return success && result.rows.length !== 0;
+      try {
+        if (!noNavigate) {
+          return await this.$store.dispatch("Video/QUERY_RECORDING", {
+            params,
+            skipMessage,
+          });
+        } else {
+          // Just return whether or not there is a next/prev recording.
+          const { result, success } = await api.recording.query(params);
+          return success && result.rows.length !== 0;
+        }
+      } catch (e) {
+        return false;
       }
     },
     prevNext(event) {
@@ -326,15 +338,18 @@ export default {
       if (track.playToEnd) {
         selectedTrack.end_s = targetTrack.data.end_s - this.timespanAdjustment;
       }
-      if (
-        selectedTrack.trackId &&
-        Number(this.$route.params.trackid) !== selectedTrack.trackId
-      ) {
-        await this.$router.replace({
-          path: `/recording/${this.recording.id}/${selectedTrack.trackId}`,
-          query: this.$route.query,
-        });
-      }
+      try {
+        if (
+          selectedTrack.trackId &&
+          Number(this.$route.params.trackid) !== selectedTrack.trackId
+        ) {
+          await this.$router.replace({
+            path: `/recording/${this.recording.id}/${selectedTrack.trackId}`,
+            query: this.$route.query,
+          });
+        }
+        // eslint-disable-next-line no-empty
+      } catch (e) {}
       this.selectedTrack = selectedTrack;
     },
     async playerReady(header) {
@@ -364,13 +379,20 @@ export default {
 };
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 .video-elements-wrapper {
   padding: 0;
 }
 .processing {
   color: darkred;
-  font-weight: 600;
-  font-size: 120%;
+  padding: 0 20px;
+  text-align: center;
+  > span {
+    vertical-align: middle;
+  }
+  > span:last-child {
+    font-weight: 600;
+    font-size: 120%;
+  }
 }
 </style>

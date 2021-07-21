@@ -146,6 +146,7 @@ interface TaggingViewData {
   }[];
   nextTrackOrRecordingTimeout: number;
   currentTimeout: number | null;
+  fileSize: number;
 }
 
 export default Vue.extend({
@@ -168,7 +169,6 @@ export default Vue.extend({
       taggingPending: false,
       readyToPlay: false,
       nextTrackOrRecordingTimeout: 0,
-      showMotionPaths: false,
       currentTimeout: null,
       fileSize: 0,
     };
@@ -321,51 +321,55 @@ export default Vue.extend({
       }, 300);
     },
     async getRecording(biasToDeviceId?: DeviceId): Promise<boolean> {
-      const recordingResponse = await api.recording.needsTag(biasToDeviceId);
-      const { result, success } = recordingResponse;
-      if (success) {
-        const recording = result.rows[0];
-        this.fileSize = recording.fileSize;
-        // Make sure it's not a recording we've seen before and skipped tracks from.
-        if (
-          this.history.find(
-            (prev) => prev.recording.RecordingId === recording.RecordingId
-          ) !== undefined
-        ) {
-          return await this.getRecording();
-        }
-
-        // FIXME: Dedupe these tracks, we seem to not be getting DISTINCT tracks on the DB side.
-        if (recording.tracks.length) {
-          const tracks = recording.tracks.reduce((acc, track) => {
-            acc[track.TrackId] = track;
-            return acc;
-          }, {});
-          this.tracks = Object.values(tracks)
-            .map((track) => ({
-              ...track,
-              tags: [],
-            }))
-            .filter((track) => track.needsTagging)
-            .sort((a, b) => a.data.start_s - b.data.start_s);
-
-          for (let i = 0; i < this.tracks.length; i++) {
-            this.tracks[i].trackIndex = i;
+      try {
+        const recordingResponse = await api.recording.needsTag(biasToDeviceId);
+        const { result, success } = recordingResponse;
+        if (success) {
+          const recording = result.rows[0];
+          this.fileSize = recording.fileSize;
+          // Make sure it's not a recording we've seen before and skipped tracks from.
+          if (
+            this.history.find(
+              (prev) => prev.recording.RecordingId === recording.RecordingId
+            ) !== undefined
+          ) {
+            return await this.getRecording();
           }
-        }
-        this.currentRecording = recording;
 
-        // Advance to next untagged track
-        let nextIndex = 0;
-        while (
-          nextIndex < this.tracks.length &&
-          !this.tracks[nextIndex].needsTagging
-        ) {
-          nextIndex++;
+          // FIXME: Dedupe these tracks, we seem to not be getting DISTINCT tracks on the DB side.
+          if (recording.tracks.length) {
+            const tracks = recording.tracks.reduce((acc, track) => {
+              acc[track.TrackId] = track;
+              return acc;
+            }, {});
+            this.tracks = Object.values(tracks)
+              .map((track) => ({
+                ...track,
+                tags: [],
+              }))
+              .filter((track) => track.needsTagging)
+              .sort((a, b) => a.data.start_s - b.data.start_s);
+
+            for (let i = 0; i < this.tracks.length; i++) {
+              this.tracks[i].trackIndex = i;
+            }
+          }
+          this.currentRecording = recording;
+
+          // Advance to next untagged track
+          let nextIndex = 0;
+          while (
+            nextIndex < this.tracks.length &&
+            !this.tracks[nextIndex].needsTagging
+          ) {
+            nextIndex++;
+          }
+          this.currentTrackIndex = nextIndex;
         }
-        this.currentTrackIndex = nextIndex;
+        return success;
+      } catch (e) {
+        return false;
       }
-      return success;
     },
   },
   computed: {
@@ -403,7 +407,7 @@ export default Vue.extend({
     },
     cTrack() {
       return {
-        trackIndex: this.currentTrack.trackIndex,
+        trackIndex: this.currentTrack && this.currentTrack.trackIndex,
         start_s: (this.currentTrack && this.currentTrack.data.start_s) || 0,
       };
     },

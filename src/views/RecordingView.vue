@@ -7,8 +7,9 @@
             :to="{
               name: 'device',
               params: {
-                devicename: deviceName,
-                groupname: groupName,
+                deviceName: deviceName,
+                groupName: groupName,
+                tabName: 'recordings',
               },
             }"
           >
@@ -55,7 +56,7 @@
         @click="$router.push({ path: '/recordings' })"
         class="btn btn-link"
       >
-        Recordings
+        Return to recordings
       </button>
     </div>
   </b-container>
@@ -84,9 +85,9 @@ export default {
   },
   computed: {
     ...mapState({
-      recording: (state): RecordingInfo => state.Video.recording,
-      tracks: (state) => state.Video.tracks,
-      fileSource: (state) => {
+      recording: (state: any): RecordingInfo => state.Video.recording,
+      tracks: (state: any) => state.Video.tracks,
+      fileSource: (state: any) => {
         return (
           (state.Video.downloadFileJWT &&
             `${config.api}/api/v1/signedUrl?jwt=${state.Video.downloadFileJWT}`) ||
@@ -95,7 +96,7 @@ export default {
       },
       // TODO(jon): Api endpoint that doesn't require signedUrl etc, just uses usual auth, and we say which recording we want.
       // Fixes issue with videos timing out on tabs that are open for a while.
-      rawSource: (state) =>
+      rawSource: (state: any) =>
         `${config.api}/api/v1/signedUrl?jwt=${state.Video.downloadRawJWT}`,
     }),
     timeString(): string {
@@ -109,13 +110,6 @@ export default {
         return this.date.toDateString();
       }
       return "";
-    },
-    moonPhase() {
-      return SunCalc.getMoonIllumination(
-        this.date,
-        this.recording.location.coordinates[0],
-        this.recording.location.coordinates[1]
-      );
     },
     sunTimes() {
       return SunCalc.getTimes(
@@ -156,12 +150,26 @@ export default {
       return (this.recording.Group && this.recording.Group.groupname) || "";
     },
   },
+  watch: {
+    async $route(to) {
+      if (Number(to.params.id) !== this.recording.id) {
+        try {
+          await this.$store.dispatch(
+            "Video/GET_RECORDING",
+            this.$route.params.id
+          );
+        } catch (e) {
+          this.errorMessage =
+            "We couldn't find the recording you're looking for.";
+        }
+      }
+    },
+  },
   mounted: async function () {
     try {
       await this.$store.dispatch("Video/GET_RECORDING", this.$route.params.id);
     } catch (err) {
-      this.errorMessage =
-        "We couldn't find the recording you're looking for...";
+      this.errorMessage = "We couldn't find the recording you're looking for.";
     }
   },
 };

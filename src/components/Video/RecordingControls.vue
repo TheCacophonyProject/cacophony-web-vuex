@@ -11,6 +11,15 @@
             <b-dropdown text="Label" right variant="info" class="btn-block">
               <b-dropdown-item
                 v-b-tooltip.hover.left="
+                  'Flag this recording for review due to low confidence IDing track(s)'
+                "
+                @click="addRequiresReviewTag"
+              >
+                Flag for review
+              </b-dropdown-item>
+
+              <b-dropdown-item
+                v-b-tooltip.hover.left="
                   'An animal is in a trap in this recording'
                 "
                 @click="addTrappedTag"
@@ -28,8 +37,11 @@
               </b-dropdown-item>
 
               <b-dropdown-item
+                :disabled="!processingCompleted"
                 v-b-tooltip.hover.left="
-                  'One or more animals do not have a corresponding track in this recording'
+                  !processingCompleted
+                    ? 'Tracks are still being processed'
+                    : 'One or more animals do not have a corresponding track in this recording'
                 "
                 @click="addMissedTrackTag"
               >
@@ -153,6 +165,10 @@ export default {
       type: String,
       default: "",
     },
+    processingCompleted: {
+      type: Boolean,
+      default: false,
+    },
   },
   data() {
     return {
@@ -189,6 +205,9 @@ export default {
     },
     addMultipleAnimalsTag: function () {
       this.addTag("multiple animals");
+    },
+    addRequiresReviewTag: function () {
+      this.addTag("requires review");
     },
     addTag: function (label) {
       this.$emit("addTag", {

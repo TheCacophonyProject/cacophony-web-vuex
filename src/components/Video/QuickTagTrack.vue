@@ -58,7 +58,7 @@
 </template>
 
 <script>
-import DefaultLabels, { imgSrc } from "../../const.js";
+import DefaultLabels, { imgSrc } from "../../const";
 export default {
   name: "QuickTagTrack",
   props: {
@@ -137,9 +137,9 @@ export default {
       this.$emit("addTag", tag);
     },
     getOtherTitle(other) {
-      if (other === DefaultLabels.allLabels.falsePositive.value) {
+      if (other === DefaultLabels.falsePositiveLabel.value) {
         return "Mark as nothing or false positive (meaning there is no animal)";
-      } else if (other === DefaultLabels.allLabels.unknown.value) {
+      } else if (other === DefaultLabels.unknownLabel.value) {
         return "Mark as unknown (meaning the type of animal is unclear)";
       }
     },

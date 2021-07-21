@@ -20,33 +20,38 @@
           "
         />
       </div>
-      <div :class="'search-content-wrapper'">
-        <div class="search-results">
-          <h1>Animal activity</h1>
-          <h2 v-if="countMessage">
-            {{ countMessage }}
-          </h2>
-          <h5 v-else>Loading...</h5>
-          <p class="search-description" v-html="currentQueryDescription" />
+      <b-col sm="12">
+        <div :class="'search-content-wrapper'">
+          <div class="search-results">
+            <h1>Animal activity</h1>
+            <div style="float: right">
+              <visit-download :params="serialisedQuery" />
+            </div>
+            <h2 v-if="countMessage">
+              {{ countMessage }}
+            </h2>
+            <h5 v-else>Loading...</h5>
+            <p class="search-description" v-html="currentQueryDescription" />
+          </div>
+          <div v-if="!queryPending" class="results">
+            <VisitList :visits="visits" />
+          </div>
+          <div v-else class="results loading">
+            <div
+              v-for="i in 10"
+              :style="{
+                background: `rgba(240, 240, 240, ${1 / i}`,
+              }"
+              :key="i"
+              class="recording-placeholder"
+            />
+          </div>
+          <div v-if="countMessage === 'No matches'" class="no-results">
+            <h6 class="text-muted">No visits found</h6>
+            <p class="small text-muted">Please check your search criteria.</p>
+          </div>
         </div>
-        <div v-if="!queryPending" class="results">
-          <VisitList :visits="visits" />
-        </div>
-        <div v-else class="results loading">
-          <div
-            v-for="i in 10"
-            :style="{
-              background: `rgba(240, 240, 240, ${1 / i}`,
-            }"
-            :key="i"
-            class="recording-placeholder"
-          />
-        </div>
-        <div v-if="countMessage === 'No matches'" class="no-results">
-          <h6 class="text-muted">No visits found</h6>
-          <p class="small text-muted">Please check your search criteria.</p>
-        </div>
-      </div>
+      </b-col>
 
       <div class="sticky-footer">
         <div class="pagination-per-page">
@@ -74,11 +79,12 @@
 <script>
 import QueryRecordings from "../components/QueryRecordings/QueryRecordings.vue";
 import VisitList from "../components/Monitoring/VisitList.vue";
+import VisitDownload from "../components/Monitoring/VisitDownload.vue";
 import api from "../api/index";
 
 export default {
   name: "MonitoringView",
-  components: { VisitList, QueryRecordings },
+  components: { VisitList, QueryRecordings, VisitDownload },
   props: {},
   data() {
     return {
@@ -124,19 +130,23 @@ export default {
   },
   methods: {
     pagination(page) {
+      // console.log("Change pagination", page);
       this.paginationHasChanged(page, this.perPage);
     },
     perPageChanged(perPage) {
+      // console.log("perPageChanged", perPage);
       this.currentPage = 1;
       this.paginationHasChanged(this.currentPage, perPage);
     },
     makePaginatedQuery(origQuery, page, perPage) {
-      const query = Object.assign({}, origQuery);
+      const query = { ...origQuery };
+      // console.log("Paginated query:", query);
       query.perPage = perPage;
       query.page = page;
       return query;
     },
     updateRoute(query) {
+      // console.log("Update route", query);
       // Catch errors to avoid redundant navigation error
       this.$router
         .push({
@@ -155,6 +165,7 @@ export default {
       this.getVisits(query);
     },
     queryRouteHasChanged(query) {
+      // console.log("queryRouteHasChanged", query);
       const fullQuery = this.makePaginatedQuery(
         query,
         this.currentPage,
@@ -187,7 +198,9 @@ export default {
       this.visits = [];
       // Call API and process results
       this.queryPending = true;
+      // console.log("query", whereQuery);
       const results = await api.monitoring.queryVisitPage(whereQuery);
+      // console.log("results", results);
       this.queryPending = false;
 
       // Remove previous values *again* since it's possible for the query to have been called twice

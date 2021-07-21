@@ -17,6 +17,7 @@ export default {
   replaceTrackTag,
   needsTag,
   makeApiQuery,
+  latestForDevice,
 };
 
 export type DeviceId = number;
@@ -42,7 +43,7 @@ interface Device {
   devicename: string;
 }
 
-interface Location {
+export interface Location {
   type: "Point" | string;
   coordinates: [number, number];
 }
@@ -58,7 +59,7 @@ export interface RecordingInfo {
   processingState: "FINISHED"; // Or?
   duration: number; //seconds
   location: Location;
-  batteryLevel: null;
+  batteryLevel: null | number;
   DeviceId: DeviceId;
   GroupId: GroupId;
   StationId: StationId | null;
@@ -150,19 +151,36 @@ export interface User {
   globalPermission: "read" | "write" | "off";
 }
 
-export interface TrackTag {
-  id: TrackTagId;
+export interface TagCommon {
+  id?: TrackTagId;
   TrackId: TrackId;
-  UserId?: UserId;
   what: string;
-  confidence?: number;
-  automatic?: boolean;
-  data: string | { name: string } | undefined;
-  createdAt?: UtcTimestamp;
-  updatedAt?: UtcTimestamp;
-  User?: User;
-  user?: User;
+  confidence: number;
 }
+
+// export interface TrackTag {
+//   data: string | { name: string } | null;
+//   createdAt?: UtcTimestamp;
+//   updatedAt?: UtcTimestamp;
+//
+//   //user?: User;
+// }
+
+export interface AiTag extends TagCommon {
+  data: string | { name: string };
+  UserId: null;
+  User: null;
+  automatic: true;
+}
+
+export interface HumanTag extends TagCommon {
+  data: null;
+  UserId: UserId;
+  User: User;
+  automatic: false;
+}
+
+export type TrackTag = AiTag | HumanTag;
 
 export interface LimitedTrackTag {
   TrackTagId: TrackTagId;
@@ -170,8 +188,19 @@ export interface LimitedTrackTag {
 }
 
 export interface Tag {
-  what: string;
   confidence: number;
+  animal: null | string;
+  automatic: boolean;
+  createdAt: string;
+  detail: string;
+  event: string;
+  duration: null | number;
+  id: number;
+  startTime: null | string;
+  tagger: { username: string; id: number };
+  taggerId: number;
+  version: number;
+  what: null | string;
 }
 
 export interface QueryResultCount {
@@ -219,6 +248,7 @@ export interface RecordingQuery {
   to?: string;
   group?: number[];
   device?: number[];
+  station?: number[];
   type?: string;
   order?: any; // TODO - It's not clear what order accepts (it's a sequelize thing), but nobody seems to use it right now.
 }
@@ -233,8 +263,15 @@ function query(
   );
 }
 
-function addIfSet(map: any, value: string, submap: string, key = "") {
-  if (value && value.trim() !== "") {
+function addIfSet(map: any, value: string | number, submap: string, key = "") {
+  if (value && typeof value === "string" && value.trim() !== "") {
+    map[submap] = map[submap] || {};
+    if (Number(value).toString() == value) {
+      map[submap][key] = Number(value);
+    } else {
+      map[submap][key] = value;
+    }
+  } else if (typeof value === "number") {
     map[submap] = map[submap] || {};
     map[submap][key] = value;
   }
@@ -248,7 +285,7 @@ function makeApiQuery(query: RecordingQuery): any {
   // Map between the mismatch in video type types between frontend and backend
   if (query.type === "video") {
     apiWhere["type"] = "thermalRaw";
-  } else if (query.type !== "both") {
+  } else if (query.type && query.type !== "both") {
     apiWhere["type"] = query.type;
   }
 
@@ -256,17 +293,33 @@ function makeApiQuery(query: RecordingQuery): any {
   // it to accurately share search parameters via urls.
   const hasDevices = query.hasOwnProperty("device") && query.device.length > 0;
   const hasGroups = query.hasOwnProperty("group") && query.group.length > 0;
-  if (hasDevices && hasGroups) {
-    apiWhere["$or"] = [{ DeviceId: query.device }, { GroupId: query.group }];
+  const hasStations =
+    query.hasOwnProperty("station") && query.station.length > 0;
+  if (
+    (hasDevices && hasGroups) ||
+    (hasDevices && hasStations) ||
+    (hasGroups && hasStations)
+  ) {
+    apiWhere["$or"] = [];
+    if (hasDevices) {
+      apiWhere["$or"].push({ DeviceId: query.device });
+    }
+    if (hasGroups) {
+      apiWhere["$or"].push({ GroupId: query.group });
+    }
+    if (hasStations) {
+      apiWhere["$or"].push({ StationId: query.station });
+    }
   } else if (hasGroups) {
     apiWhere["GroupId"] = query.group;
   } else if (hasDevices) {
     apiWhere["DeviceId"] = query.device;
+  } else if (hasStations) {
+    apiWhere["StationId"] = query.station;
   }
 
   addIfSet(apiWhere, calculateFromTime(query), "recordingDateTime", "$gt");
   addIfSet(apiWhere, query.to, "recordingDateTime", "$lt");
-
   const apiParams = {};
   const whereString = JSON.stringify(apiWhere);
   if (whereString.length > 2) {
@@ -413,4 +466,12 @@ export function calculateFromTime(query: RecordingQuery): string {
   }
 
   return null;
+}
+
+export function latestForDevice(deviceId: number) {
+  return query({
+    limit: 1,
+    days: "all",
+    device: [deviceId],
+  });
 }
